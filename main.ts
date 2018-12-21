@@ -482,7 +482,14 @@ window.addEventListener("load", () => {
     if (!isCanvas(canvas)) {
         throw new Error("Canvas isn't a canvas element!");
     }
-    const renderer = new Sunflower3DRenderer(canvas, new Sunflower(MAX_POINTS));
+    const sunflower = new Sunflower(MAX_POINTS);
+    const renderer = (() => {
+        try {
+            return new Sunflower3DRenderer(canvas, sunflower);
+        } catch (error) {
+            return new Sunflower2DRenderer(canvas, sunflower);
+        }
+    })();
     
     const resizeListener = () => {
         canvas.width = window.innerWidth;
