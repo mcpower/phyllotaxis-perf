@@ -18,6 +18,34 @@ const MAX_FRAME = MAX_TIME * FRAMES_PER_TIME;
 const DIST_MULTIPLIER = 0.020 * 2;
 const ANGLE_MULTIPLIER = 2 * Math.PI / MAX_TIME;
 
+const VERTEX_SHADER = `
+precision mediump float;
+
+attribute vec2 vertexPosition;
+
+// need to account for non-square viewports
+// multiply EVERYTHING by scale to account for this
+// should be (size / width, size / height)
+uniform vec2 scale; 
+uniform vec2 coord;
+
+void main() {
+    gl_Position = vec4(scale * (coord + vertexPosition), 0.0, 1.0);
+}
+`;
+
+const FRAGMENT_SHADER = `
+precision mediump float;
+
+// because we're rendering multiple circles with multiple draw calls,
+// we can set the colour per draw call
+uniform vec3 colour;
+
+void main() {
+    gl_FragColor = vec4(colour, 1.0);
+}
+`;
+
 interface Point {
     x: number;
     y: number;
