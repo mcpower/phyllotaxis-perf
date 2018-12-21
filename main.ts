@@ -1,4 +1,5 @@
-const MAX_POINTS = 1000;
+// a bit more than what can fit in a square
+const MAX_POINTS = 1300;
 
 const CIRCLE_SIZE = 0.008 * 2;
 
@@ -127,7 +128,7 @@ class Sunflower {
                 curPos: {...initPos},
                 deltaPos,
                 initPos,
-                rippleD: 5 * i / (points - 1)
+                rippleD: 4 * Math.sqrt(i / (points - 1))
             });
         }
     }
@@ -164,7 +165,6 @@ class Sunflower2DRenderer {
     width: number;
     height: number;
     size: number;
-    lastMs: number | undefined;
 
     constructor(canvas: HTMLCanvasElement, sunflower: Sunflower) {
         this.canvas = canvas;
@@ -173,7 +173,6 @@ class Sunflower2DRenderer {
             throw new Error("Cannot get canvas context.");
         }
         this.ctx = ctx;
-        ctx.font = "16px Arial";
         this.sunflower = sunflower;
         this.width = canvas.width;
         this.height = canvas.height;
@@ -186,9 +185,18 @@ class Sunflower2DRenderer {
         ctx.clearRect(0, 0, this.width, this.height);
         for (let i = 0; i < this.sunflower.points.length; i++) {
             const point = this.sunflower.points[i];
-            ctx.fillStyle = `rgb(${Math.min(255, 245 / point.rippleD)}, ${Math.min(255, 164 / point.rippleD)}, ${Math.min(255, 74 / point.rippleD)})`;
+            ctx.fillStyle = `rgb(
+                ${Math.min(255, 245 / point.rippleD)},
+                ${Math.min(255, 164 / point.rippleD)},
+                ${Math.min(255, 74 / point.rippleD)}
+            )`;
             ctx.beginPath();
-            ctx.arc(this.width / 2 + point.curPos.x * this.size / 2, this.height / 2 - point.curPos.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
+            ctx.arc(
+                this.width / 2 + point.curPos.x * this.size / 2,
+                this.height / 2 - point.curPos.y * this.size / 2,
+                CIRCLE_SIZE / 2 * this.size,
+                0, 2*Math.PI, false
+            );
             ctx.fill();
         }
         this.sunflower.nextFrame();
@@ -204,7 +212,6 @@ class Sunflower3DRenderer {
     width: number;
     height: number;
     size: number;
-    lastMs: number | undefined;
 
     // We don't need scaleLocation as we assume it won't change.
     // scaleLocation: WebGLUniformLocation;
