@@ -113,7 +113,7 @@ class Sunflower2DRenderer {
             throw new Error("Cannot get canvas context.");
         }
         this.ctx = ctx;
-        ctx.fillStyle = 'rgb(200, 0, 0)';
+        ctx.fillStyle = 'rgb(245, 164, 74)';
         this.sunflower = sunflower;
         this.width = canvas.width;
         this.height = canvas.height;
