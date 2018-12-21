@@ -21,28 +21,29 @@ const ANGLE_MULTIPLIER = 2 * Math.PI / MAX_TIME;
 const VERTEX_SHADER_SOURCE = `
 precision mediump float;
 
+// Instanced
+attribute vec2 coord;
+attribute vec3 colour;
+
 attribute vec2 vertexPosition;
 
-// need to account for non-square viewports
-// multiply EVERYTHING by scale to account for this
-// should be (size / width, size / height)
 uniform vec2 scale; 
-uniform vec2 coord;
+
+varying vec3 varyingColour;
 
 void main() {
     gl_Position = vec4(scale * (coord + vertexPosition), 0.0, 1.0);
+    varyingColour = colour;
 }
 `;
 
 const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 
-// because we're rendering multiple circles with multiple draw calls,
-// we can set the colour per draw call
-uniform vec3 colour;
+varying vec3 varyingColour;
 
 void main() {
-    gl_FragColor = vec4(colour, 1.0);
+    gl_FragColor = vec4(varyingColour, 1.0);
 }
 `;
 
@@ -175,6 +176,7 @@ class Sunflower3DRenderer {
     canvas: HTMLCanvasElement;
     sunflower: Sunflower;
     gl: WebGLRenderingContext;
+    
     width: number;
     height: number;
     size: number;
@@ -182,12 +184,19 @@ class Sunflower3DRenderer {
 
     // We don't need scaleLocation as we assume it won't change.
     // scaleLocation: WebGLUniformLocation;
-    coordLocation: WebGLUniformLocation;
-    colourLocation: WebGLUniformLocation;
+    coordLocation: GLuint;
+    colourLocation: GLuint;
+
+    coordArray: Float32Array;
+    colourArray: Float32Array;
+
+    coordBuffer: WebGLBuffer;
+    colourBuffer: WebGLBuffer;
 
     vertexPositionLocation: GLuint;
 
     indexCount: number;
+    instanceExt: ANGLE_instanced_arrays;
 
     constructor(canvas: HTMLCanvasElement, sunflower: Sunflower, circleSlices: number = 16) {
         this.canvas = canvas;
@@ -200,6 +209,12 @@ class Sunflower3DRenderer {
         this.width = canvas.width;
         this.height = canvas.height;
         this.size = Math.max(this.width, this.height);
+
+        const instanceExt = gl.getExtension("ANGLE_instanced_arrays");
+        if (instanceExt === null) {
+            throw new Error("I need instancing!");
+        }
+        this.instanceExt = instanceExt;
 
         // Time for some fun boilerplate!
         gl.viewport(0, 0, this.width, this.height);
@@ -270,14 +285,12 @@ class Sunflower3DRenderer {
             const scaleLocation = uniformLocation("scale");
             // Set scaleLocation.
             gl.uniform2f(scaleLocation, this.size / this.width, this.size / this.height);
-            this.coordLocation = uniformLocation("coord");
-            this.colourLocation = uniformLocation("colour");
-            // Set colour (temporary).
-            gl.uniform3f(this.colourLocation, 245/255, 164/255, 74./255);
         }
 
         // Getting attributes
         this.vertexPositionLocation = gl.getAttribLocation(program, "vertexPosition");
+        this.coordLocation = gl.getAttribLocation(program, "coord");
+        this.colourLocation = gl.getAttribLocation(program, "colour");
 
         // Setting vertex buffers and index buffers
         {
@@ -303,6 +316,7 @@ class Sunflower3DRenderer {
             // and assign it to the vertex attrib.
             gl.vertexAttribPointer(this.vertexPositionLocation, 2, gl.FLOAT, false, 0, 0);
             gl.enableVertexAttribArray(this.vertexPositionLocation);
+            instanceExt.vertexAttribDivisorANGLE(this.vertexPositionLocation, 0);
 
 
             // We want our circle to have a point in the center, with other
@@ -323,6 +337,37 @@ class Sunflower3DRenderer {
 
             // We also need the count of indices for drawing.
             this.indexCount = indices.length;
+
+
+            // Now... for the instancing.
+            // How many points do we have?
+            const n = sunflower.points.length;
+            // Lets set up our arrays first.
+            this.coordArray = new Float32Array(n * 2);
+            this.colourArray = new Float32Array(n * 3);
+            // coordArray will be filled per call.
+            // colourArray should be filled per call, but for now let's fill
+            // it up.
+            for (let i = 0; i < n; i++) {
+                this.colourArray[3*i + 0] = 245/255;
+                this.colourArray[3*i + 1] = 164/255;
+                this.colourArray[3*i + 2] = 74/255;
+            }
+
+            // Okay, let's set up the buffers.
+            this.coordBuffer = createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.coordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, this.coordArray, gl.DYNAMIC_DRAW);
+            gl.vertexAttribPointer(this.coordLocation, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(this.coordLocation);
+            instanceExt.vertexAttribDivisorANGLE(this.coordLocation, 1);
+
+            this.colourBuffer = createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.colourBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, this.colourArray, gl.DYNAMIC_DRAW);
+            gl.vertexAttribPointer(this.colourLocation, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(this.colourLocation);
+            instanceExt.vertexAttribDivisorANGLE(this.colourLocation, 1);
         }
         
 
@@ -332,12 +377,17 @@ class Sunflower3DRenderer {
     render = (time: number) => {
         const gl = this.gl;
         gl.clear(gl.COLOR_BUFFER_BIT); // We aren't doing depth tests.
-        
-        for (let i = 0; i < this.sunflower.points.length; i++) {
+        const n = this.sunflower.points.length;
+        for (let i = 0; i < n; i++) {
             const point = this.sunflower.points[i].curPos;
-            gl.uniform2f(this.coordLocation, point.x, point.y);
-            gl.drawElements(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0);
+            this.coordArray[2*i + 0] = point.x;
+            this.coordArray[2*i + 1] = point.y;
         }
+        // We don't need to call bindBuffer every time render is called...
+        // but if we introduce per-point colours, we would need to.
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.coordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.coordArray, gl.DYNAMIC_DRAW);
+        this.instanceExt.drawElementsInstancedANGLE(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0, n);
 
         
         if (this.lastMs !== undefined) {
