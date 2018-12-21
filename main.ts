@@ -18,7 +18,7 @@ const MAX_FRAME = MAX_TIME * FRAMES_PER_TIME;
 const DIST_MULTIPLIER = 0.020 * 2;
 const ANGLE_MULTIPLIER = 2 * Math.PI / MAX_TIME;
 
-const VERTEX_SHADER = `
+const VERTEX_SHADER_SOURCE = `
 precision mediump float;
 
 attribute vec2 vertexPosition;
@@ -34,7 +34,7 @@ void main() {
 }
 `;
 
-const FRAGMENT_SHADER = `
+const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 
 // because we're rendering multiple circles with multiple draw calls,
@@ -171,6 +171,184 @@ class Sunflower2DRenderer {
     }
 }
 
+class Sunflower3DRenderer {
+    canvas: HTMLCanvasElement;
+    sunflower: Sunflower;
+    gl: WebGLRenderingContext;
+    width: number;
+    height: number;
+    size: number;
+    lastMs: number | undefined;
+
+    // We don't need scaleLocation as we assume it won't change.
+    // scaleLocation: WebGLUniformLocation;
+    coordLocation: WebGLUniformLocation;
+    colourLocation: WebGLUniformLocation;
+
+    vertexPositionLocation: GLuint;
+
+    indexCount: number;
+
+    constructor(canvas: HTMLCanvasElement, sunflower: Sunflower, circleSlices: number = 16) {
+        this.canvas = canvas;
+        const gl = canvas.getContext("webgl");
+        if (gl === null) {
+            throw new Error("Cannot get WebGL context.");
+        }
+        this.gl = gl;
+        this.sunflower = sunflower;
+        this.width = canvas.width;
+        this.height = canvas.height;
+        this.size = Math.max(this.width, this.height);
+
+        // Time for some fun boilerplate!
+        gl.viewport(0, 0, this.width, this.height);
+        gl.clearColor(1, 1, 1, 1);
+        // We don't need to enable depth test / back face culling.
+        
+        // Compiling shaders
+        // As we're not using multiple programs, there's no need to store this
+        // around for rendering.
+        const program = (() => {
+            const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+            if (vertexShader === null) {
+                throw new Error("Cannot create vertex shader?");
+            }
+            gl.shaderSource(vertexShader, VERTEX_SHADER_SOURCE);
+            gl.compileShader(vertexShader);
+            if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+                throw new Error(
+                    "Vertex shader compilation failed.\n" +
+                    "The error log is:\n" +
+                    (gl.getShaderInfoLog(vertexShader) || "null???")
+                );
+            }
+
+            const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+            if (fragmentShader === null) {
+                throw new Error("Cannot create fragment shader?");
+            }
+            gl.shaderSource(fragmentShader, FRAGMENT_SHADER_SOURCE);
+            gl.compileShader(fragmentShader);
+            if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+                throw new Error(
+                    "Fragment shader compilation failed.\n" +
+                    "The error log is:\n" +
+                    (gl.getShaderInfoLog(fragmentShader) || "null???")
+                );
+            }
+
+            const program = gl.createProgram();
+            if (program === null) {
+                throw new Error("Cannot create GL program?");
+            }
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                throw new Error(
+                    "Shader linking failed.\n" +
+                    "The error log is:\n" +
+                    (gl.getProgramInfoLog(program) || "null???")
+                );
+            }
+
+            return program;
+        })();
+        gl.useProgram(program);
+
+        // Getting uniforms
+        {
+            const uniformLocation = (name: string) => {
+                const location = gl.getUniformLocation(program, name);
+                if (location === null) {
+                    throw new Error(`Cannot get uniform location for ${name}.`);
+                }
+                return location;
+            }
+            const scaleLocation = uniformLocation("scale");
+            // Set scaleLocation.
+            gl.uniform2f(scaleLocation, this.size / this.width, this.size / this.height);
+            this.coordLocation = uniformLocation("coord");
+            this.colourLocation = uniformLocation("colour");
+            // Set colour (temporary).
+            gl.uniform3f(this.colourLocation, 245/255, 164/255, 74./255);
+        }
+
+        // Getting attributes
+        this.vertexPositionLocation = gl.getAttribLocation(program, "vertexPosition");
+
+        // Setting vertex buffers and index buffers
+        {
+            const createBuffer = () => {
+                const buf = gl.createBuffer();
+                if (buf === null) {
+                    throw new Error("Error when creating GL buffer??");
+                }
+                return buf;
+            };
+            const vertexPoints: number[] = [];
+            // Push the center on.
+            vertexPoints.push(0, 0);
+            for (let i = 0; i < circleSlices; i++) {
+                // Push the outside point on.
+                const theta = 2 * Math.PI * i / circleSlices;
+                vertexPoints.push(CIRCLE_SIZE * Math.cos(theta), CIRCLE_SIZE * Math.sin(theta));
+            }
+            // OK, let's turn it into an array buffer!
+            const vertexPointsBuffer = createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexPointsBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPoints), gl.STATIC_DRAW);
+            // and assign it to the vertex attrib.
+            gl.vertexAttribPointer(this.vertexPositionLocation, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(this.vertexPositionLocation);
+
+
+            // We want our circle to have a point in the center, with other
+            // points scattered on the outside. We'll draw it with gl.TRIANGLE_FAN.
+            // Because we only have one single vertex buffer (the location),
+            // we can use the "first" vertex as the last one too.
+            // If we had texture coordinates or something, this wouldn't work!
+            const indices = [0];
+            for (let i = 1; i <= circleSlices; i++) {
+                indices.push(i);
+            }
+            indices.push(1);
+
+            // OK, let's turn it into an index buffer and bind it!
+            const indexBuffer = createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            // We also need the count of indices for drawing.
+            this.indexCount = indices.length;
+        }
+        
+
+        requestAnimationFrame(this.render);
+    }
+
+    render = (time: number) => {
+        const gl = this.gl;
+        gl.clear(gl.COLOR_BUFFER_BIT); // We aren't doing depth tests.
+        
+        for (let i = 0; i < this.sunflower.points.length; i++) {
+            const point = this.sunflower.points[i].curPos;
+            gl.uniform2f(this.coordLocation, point.x, point.y);
+            gl.drawElements(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0);
+        }
+
+        
+        if (this.lastMs !== undefined) {
+            const fps = 1000 / (time - this.lastMs);
+        }
+        this.sunflower.nextFrame();
+        this.lastMs = time;
+        requestAnimationFrame(this.render);
+    }
+}
+
 window.addEventListener("load", () => {
     const canvas = document.getElementById("canvas");
     if (canvas === null) {
@@ -179,5 +357,5 @@ window.addEventListener("load", () => {
     if (!isCanvas(canvas)) {
         throw new Error("Canvas isn't a canvas element!");
     }
-    const renderer2D = new Sunflower2DRenderer(canvas, new Sunflower(MAX_POINTS));
+    const renderer = new Sunflower3DRenderer(canvas, new Sunflower(MAX_POINTS));
 });
