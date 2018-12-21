@@ -23,27 +23,28 @@ precision mediump float;
 
 // Instanced
 attribute vec2 coord;
-attribute vec3 colour;
+attribute float rippleD;
 
 attribute vec2 vertexPosition;
 
 uniform vec2 scale; 
 
-varying vec3 varyingColour;
+varying float varyingRippleD;
 
 void main() {
     gl_Position = vec4(scale * (coord + vertexPosition), 0.0, 1.0);
-    varyingColour = colour;
+    varyingRippleD = rippleD;
 }
 `;
 
 const FRAGMENT_SHADER_INSTANCING = `
 precision mediump float;
 
-varying vec3 varyingColour;
+uniform vec3 colour;
+varying float varyingRippleD;
 
 void main() {
-    gl_FragColor = vec4(varyingColour, 1.0);
+    gl_FragColor = vec4(colour / varyingRippleD, 1.0);
 }
 `;
 
@@ -69,9 +70,10 @@ precision mediump float;
 // because we're rendering multiple circles with multiple draw calls,
 // we can set the colour per draw call
 uniform vec3 colour;
+uniform float rippleD;
 
 void main() {
-    gl_FragColor = vec4(colour, 1.0);
+    gl_FragColor = vec4(colour / rippleD, 1.0);
 }
 `;
 
@@ -125,7 +127,7 @@ class Sunflower {
                 curPos: {...initPos},
                 deltaPos,
                 initPos,
-                rippleD: 0
+                rippleD: 5 * i / (points - 1)
             });
         }
     }
@@ -171,7 +173,6 @@ class Sunflower2DRenderer {
             throw new Error("Cannot get canvas context.");
         }
         this.ctx = ctx;
-        ctx.fillStyle = 'rgb(245, 164, 74)';
         ctx.font = "16px Arial";
         this.sunflower = sunflower;
         this.width = canvas.width;
@@ -184,9 +185,10 @@ class Sunflower2DRenderer {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
         for (let i = 0; i < this.sunflower.points.length; i++) {
-            const point = this.sunflower.points[i].curPos;
+            const point = this.sunflower.points[i];
+            ctx.fillStyle = `rgb(${Math.min(255, 245 / point.rippleD)}, ${Math.min(255, 164 / point.rippleD)}, ${Math.min(255, 74 / point.rippleD)})`;
             ctx.beginPath();
-            ctx.arc(this.width / 2 + point.x * this.size / 2, this.height / 2 - point.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
+            ctx.arc(this.width / 2 + point.curPos.x * this.size / 2, this.height / 2 - point.curPos.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
             ctx.fill();
         }
         this.sunflower.nextFrame();
@@ -206,6 +208,7 @@ class Sunflower3DRenderer {
 
     // We don't need scaleLocation as we assume it won't change.
     // scaleLocation: WebGLUniformLocation;
+    colourLocation: WebGLUniformLocation;
     
 
     vertexPositionLocation: GLuint;
@@ -217,19 +220,19 @@ class Sunflower3DRenderer {
     variantData!: {
         type: "instancing";
         coordLocation: GLuint;
-        colourLocation: GLuint;
+        rippleDLocation: GLuint;
 
         coordArray: Float32Array;
-        colourArray: Float32Array;
+        rippleDArray: Float32Array;
 
         coordBuffer: WebGLBuffer;
-        colourBuffer: WebGLBuffer;
+        rippleDBuffer: WebGLBuffer;
 
         ext: ANGLE_instanced_arrays;
     } | {
         type: "uniforms";
         coordLocation: WebGLUniformLocation;
-        colourLocation: WebGLUniformLocation;
+        rippleDLocation: WebGLUniformLocation;
     };
 
     constructor(canvas: HTMLCanvasElement, sunflower: Sunflower, circleSlices: number = 16) {
@@ -324,13 +327,15 @@ class Sunflower3DRenderer {
             // Set scaleLocation.
             gl.uniform2f(scaleLocation, this.size / this.width, this.size / this.height);
 
+            this.colourLocation = uniformLocation("colour");
+            gl.uniform3f(this.colourLocation, 245/255, 164/255, 74/255);
+
             if (instanceExt === null) {
                 this.variantData = {
                     type: "uniforms",
                     coordLocation: uniformLocation("coord"),
-                    colourLocation: uniformLocation("colour"),
+                    rippleDLocation: uniformLocation("rippleD"),
                 };
-                gl.uniform3f(this.variantData.colourLocation, 245/255, 164/255, 74./255);
             }
         }
 
@@ -391,38 +396,28 @@ class Sunflower3DRenderer {
                 this.variantData = {
                     type: "instancing",
                     coordArray: new Float32Array(n * 2),
-                    colourArray: new Float32Array(n * 3),
+                    rippleDArray: new Float32Array(n),
                     coordBuffer: createBuffer(),
                     coordLocation: gl.getAttribLocation(program, "coord"),
-                    colourBuffer: createBuffer(),
-                    colourLocation: gl.getAttribLocation(program, "colour"),
+                    rippleDBuffer: createBuffer(),
+                    rippleDLocation: gl.getAttribLocation(program, "rippleD"),
                     ext: instanceExt,
                 }
 
                 instanceExt.vertexAttribDivisorANGLE(this.vertexPositionLocation, 0);
-            
-                // Lets set up our arrays first.
-                // coordArray will be filled per call.
-                // colourArray should be filled per call, but for now let's fill
-                // it up.
-                for (let i = 0; i < n; i++) {
-                    this.variantData.colourArray[3*i + 0] = 245/255;
-                    this.variantData.colourArray[3*i + 1] = 164/255;
-                    this.variantData.colourArray[3*i + 2] = 74/255;
-                }
     
                 // Okay, let's set up the buffers.
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.variantData.coordBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, this.variantData.coordArray, gl.DYNAMIC_DRAW);
+                // We'll fill in the buffer on draw.
                 gl.vertexAttribPointer(this.variantData.coordLocation, 2, gl.FLOAT, false, 0, 0);
                 gl.enableVertexAttribArray(this.variantData.coordLocation);
                 instanceExt.vertexAttribDivisorANGLE(this.variantData.coordLocation, 1);
     
-                gl.bindBuffer(gl.ARRAY_BUFFER, this.variantData.colourBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, this.variantData.colourArray, gl.DYNAMIC_DRAW);
-                gl.vertexAttribPointer(this.variantData.colourLocation, 3, gl.FLOAT, false, 0, 0);
-                gl.enableVertexAttribArray(this.variantData.colourLocation);
-                instanceExt.vertexAttribDivisorANGLE(this.variantData.colourLocation, 1);
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.variantData.rippleDBuffer);
+                // We'll fill in the buffer on draw.
+                gl.vertexAttribPointer(this.variantData.rippleDLocation, 1, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(this.variantData.rippleDLocation);
+                instanceExt.vertexAttribDivisorANGLE(this.variantData.rippleDLocation, 1);
             }
         }
         
@@ -435,20 +430,22 @@ class Sunflower3DRenderer {
         gl.clear(gl.COLOR_BUFFER_BIT); // We aren't doing depth tests.
         const n = this.sunflower.points.length;
         for (let i = 0; i < n; i++) {
-            const point = this.sunflower.points[i].curPos;
+            const point = this.sunflower.points[i];
             if (this.variantData.type === "instancing") {
-                this.variantData.coordArray[2*i + 0] = point.x;
-                this.variantData.coordArray[2*i + 1] = point.y;
+                this.variantData.coordArray[2*i + 0] = point.curPos.x;
+                this.variantData.coordArray[2*i + 1] = point.curPos.y;
+                this.variantData.rippleDArray[i] = point.rippleD;
             } else {
-                gl.uniform2f(this.variantData.coordLocation, point.x, point.y);
+                gl.uniform2f(this.variantData.coordLocation, point.curPos.x, point.curPos.y);
+                gl.uniform1f(this.variantData.rippleDLocation, point.rippleD);
                 gl.drawElements(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0);
             }
         }
         if (this.variantData.type === "instancing") {
-            // We don't need to call bindBuffer every time render is called...
-            // but if we introduce per-point colours, we would need to.
             gl.bindBuffer(gl.ARRAY_BUFFER, this.variantData.coordBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, this.variantData.coordArray, gl.DYNAMIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.variantData.rippleDBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, this.variantData.rippleDArray, gl.DYNAMIC_DRAW);
             this.variantData.ext.drawElementsInstancedANGLE(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0, n);
         }
 
