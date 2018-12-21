@@ -128,7 +128,7 @@ class Sunflower2DRenderer {
         for (let i = 0; i < this.sunflower.points.length; i++) {
             const point = this.sunflower.points[i].curPos;
             ctx.beginPath();
-            ctx.arc((1 + point.x) / 2 * this.size, (1 - point.y) / 2 * this.size, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
+            ctx.arc(this.width / 2 + point.x * this.size / 2, this.height / 2 - point.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
             ctx.fill();
         }
         this.sunflower.nextFrame();
