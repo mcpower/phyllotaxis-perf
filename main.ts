@@ -152,7 +152,7 @@ class Sunflower2DRenderer {
         requestAnimationFrame(this.render);
     }
 
-    render = (time: number) => {
+    render = (_time: number) => {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
         for (let i = 0; i < this.sunflower.points.length; i++) {
@@ -161,13 +161,7 @@ class Sunflower2DRenderer {
             ctx.arc(this.width / 2 + point.x * this.size / 2, this.height / 2 - point.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
             ctx.fill();
         }
-        if (this.lastMs !== undefined) {
-            const fps = 1000 / (time - this.lastMs);
-            ctx.fillRect(0, 0, 60, 30);
-            ctx.strokeText(fps.toFixed(0) + " fps", 0, 20);
-        }
         this.sunflower.nextFrame();
-        this.lastMs = time;
         requestAnimationFrame(this.render);
     }
 }
@@ -374,7 +368,7 @@ class Sunflower3DRenderer {
         requestAnimationFrame(this.render);
     }
 
-    render = (time: number) => {
+    render = (_time: number) => {
         const gl = this.gl;
         gl.clear(gl.COLOR_BUFFER_BIT); // We aren't doing depth tests.
         const n = this.sunflower.points.length;
@@ -389,12 +383,7 @@ class Sunflower3DRenderer {
         gl.bufferData(gl.ARRAY_BUFFER, this.coordArray, gl.DYNAMIC_DRAW);
         this.instanceExt.drawElementsInstancedANGLE(gl.TRIANGLE_FAN, this.indexCount, gl.UNSIGNED_SHORT, 0, n);
 
-        
-        if (this.lastMs !== undefined) {
-            const fps = 1000 / (time - this.lastMs);
-        }
         this.sunflower.nextFrame();
-        this.lastMs = time;
         requestAnimationFrame(this.render);
     }
 }
