@@ -180,6 +180,12 @@ class Sunflower2DRenderer {
         requestAnimationFrame(this.render);
     }
 
+    handleResize() {
+        this.width = this.canvas.width;
+        this.height = this.canvas.height;
+        this.size = Math.max(this.width, this.height);
+    }
+
     render = (_time: number) => {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
@@ -213,8 +219,7 @@ class Sunflower3DRenderer {
     height: number;
     size: number;
 
-    // We don't need scaleLocation as we assume it won't change.
-    // scaleLocation: WebGLUniformLocation;
+    scaleLocation: WebGLUniformLocation;
     colourLocation: WebGLUniformLocation;
     
 
@@ -330,9 +335,9 @@ class Sunflower3DRenderer {
                 }
                 return location;
             }
-            const scaleLocation = uniformLocation("scale");
+            this.scaleLocation = uniformLocation("scale");
             // Set scaleLocation.
-            gl.uniform2f(scaleLocation, this.size / this.width, this.size / this.height);
+            gl.uniform2f(this.scaleLocation, this.size / this.width, this.size / this.height);
 
             this.colourLocation = uniformLocation("colour");
             gl.uniform3f(this.colourLocation, 245/255, 164/255, 74/255);
@@ -432,6 +437,14 @@ class Sunflower3DRenderer {
         requestAnimationFrame(this.render);
     }
 
+    handleResize() {
+        this.width = this.canvas.width;
+        this.height = this.canvas.height;
+        this.size = Math.max(this.width, this.height);
+        this.gl.viewport(0, 0, this.width, this.height);
+        this.gl.uniform2f(this.scaleLocation, this.size / this.width, this.size / this.height);
+    }
+
     render = (_time: number) => {
         const gl = this.gl;
         gl.clear(gl.COLOR_BUFFER_BIT); // We aren't doing depth tests.
@@ -470,5 +483,12 @@ window.addEventListener("load", () => {
         throw new Error("Canvas isn't a canvas element!");
     }
     const renderer = new Sunflower3DRenderer(canvas, new Sunflower(MAX_POINTS));
-    console.log(renderer.variantData);
+    
+    const resizeListener = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        renderer.handleResize();
+    }
+    window.addEventListener("resize", resizeListener);
+    resizeListener();
 });
