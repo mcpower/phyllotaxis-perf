@@ -105,6 +105,7 @@ class Sunflower2DRenderer {
     width: number;
     height: number;
     size: number;
+    lastMs: number | undefined;
 
     constructor(canvas: HTMLCanvasElement, sunflower: Sunflower) {
         this.canvas = canvas;
@@ -114,14 +115,15 @@ class Sunflower2DRenderer {
         }
         this.ctx = ctx;
         ctx.fillStyle = 'rgb(245, 164, 74)';
+        ctx.font = "16px Arial";
         this.sunflower = sunflower;
         this.width = canvas.width;
         this.height = canvas.height;
         this.size = Math.max(this.width, this.height);
-        this.render();
+        requestAnimationFrame(this.render);
     }
 
-    render = () => {
+    render = (time: number) => {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
         for (let i = 0; i < this.sunflower.points.length; i++) {
@@ -130,7 +132,13 @@ class Sunflower2DRenderer {
             ctx.arc(this.width / 2 + point.x * this.size / 2, this.height / 2 - point.y * this.size / 2, CIRCLE_SIZE / 2 * this.size, 0, 2*Math.PI, false);
             ctx.fill();
         }
+        if (this.lastMs !== undefined) {
+            const fps = 1000 / (time - this.lastMs);
+            ctx.fillRect(0, 0, 60, 30);
+            ctx.strokeText(fps.toFixed(0) + " fps", 0, 20);
+        }
         this.sunflower.nextFrame();
+        this.lastMs = time;
         requestAnimationFrame(this.render);
     }
 }
