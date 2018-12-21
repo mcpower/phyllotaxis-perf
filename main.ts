@@ -144,12 +144,12 @@ class Sunflower2DRenderer {
 }
 
 window.addEventListener("load", () => {
-    const canvas2D = document.getElementById("2d-canvas");
-    if (canvas2D === null) {
+    const canvas = document.getElementById("canvas");
+    if (canvas === null) {
         throw new Error("Can't find canvas!");
     }
-    if (!isCanvas(canvas2D)) {
+    if (!isCanvas(canvas)) {
         throw new Error("Canvas isn't a canvas element!");
     }
-    const renderer2D = new Sunflower2DRenderer(canvas2D, new Sunflower(MAX_POINTS));
+    const renderer2D = new Sunflower2DRenderer(canvas, new Sunflower(MAX_POINTS));
 });
