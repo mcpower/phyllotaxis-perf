@@ -113,6 +113,7 @@ class Sunflower2DRenderer {
             throw new Error("Cannot get canvas context.");
         }
         this.ctx = ctx;
+        ctx.fillStyle = 'rgb(200, 0, 0)';
         this.sunflower = sunflower;
         this.width = canvas.width;
         this.height = canvas.height;
@@ -122,9 +123,7 @@ class Sunflower2DRenderer {
 
     render = () => {
         const ctx = this.ctx;
-        ctx.fillStyle = 'rgb(200, 0, 0)';
         ctx.clearRect(0, 0, this.width, this.height);
-        // ctx.fillRect(0, 0, 100, 100);
         for (let i = 0; i < this.sunflower.points.length; i++) {
             const point = this.sunflower.points[i].curPos;
             ctx.beginPath();
